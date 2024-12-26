@@ -407,6 +407,8 @@ u32 Title::extdataId(void)
 {
     u32 low = lowId();
     switch (low) {
+        case 0x0016C700:
+            return 0x16C6; // Yokai watch busters
         case 0x00055E00:
             return 0x055D; // Pokémon Y
         case 0x0011C400:

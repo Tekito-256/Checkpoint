@@ -26,6 +26,11 @@
 
 #include "io.hpp"
 
+static bool startsWith(const std::u16string& str, const std::u16string& prefix)
+{
+    return str.compare(0, prefix.length(), prefix) == 0;
+}
+
 bool io::fileExists(const std::string& path)
 {
     struct stat buffer;
@@ -88,7 +93,7 @@ void io::copyFile(FS_Archive srcArch, FS_Archive dstArch, const std::u16string& 
     g_isTransferringFile = false;
 }
 
-Result io::copyDirectory(FS_Archive srcArch, FS_Archive dstArch, const std::u16string& srcPath, const std::u16string& dstPath)
+Result io::copyDirectory(FS_Archive srcArch, FS_Archive dstArch, const std::u16string& srcPath, const std::u16string& dstPath, DirectoryPredictor pred)
 {
     Result res = 0;
     bool quit  = false;
@@ -103,11 +108,14 @@ Result io::copyDirectory(FS_Archive srcArch, FS_Archive dstArch, const std::u16s
         std::u16string newdst = dstPath + items.entry(i);
 
         if (items.folder(i)) {
+            if(pred != nullptr && !pred(items.entry(i))) {
+                continue;
+            }
             res = io::createDirectory(dstArch, newdst);
             if (R_SUCCEEDED(res) || (u32)res == 0xC82044B9) {
                 newsrc += StringUtils::UTF8toUTF16("/");
                 newdst += StringUtils::UTF8toUTF16("/");
-                res = io::copyDirectory(srcArch, dstArch, newsrc, newdst);
+                res = io::copyDirectory(srcArch, dstArch, newsrc, newdst, pred);
             }
             else {
                 quit = true;
@@ -224,7 +232,27 @@ std::tuple<bool, Result, std::string> io::backup(size_t index, size_t cellIndex)
 
             std::u16string copyPath = dstPath + StringUtils::UTF8toUTF16("/");
 
-            res = io::copyDirectory(archive, Archive::sdmc(), StringUtils::UTF8toUTF16("/"), copyPath);
+            DirectoryPredictor pred = nullptr;
+            switch(title.lowId()) {
+            case 0x16C600:
+            {
+                pred = [](const std::u16string& name) -> bool {
+                    return startsWith(name, u"yw-b_cb") || startsWith(name, u"yw-b_db");
+                };
+                break;
+            }
+            case 0x16C700:
+            {
+                pred = [](const std::u16string& name) -> bool {
+                    return startsWith(name, u"yw-b_ca") || startsWith(name, u"yw-b_da");
+                };
+                break;
+            }
+            default:
+                break;
+            }
+
+            res = io::copyDirectory(archive, Archive::sdmc(), StringUtils::UTF8toUTF16("/"), copyPath, pred);
             if (R_FAILED(res)) {
                 std::string message = mode == MODE_SAVE ? "Failed to backup save." : "Failed to backup extdata.";
                 FSUSER_CloseArchive(archive);
